@@ -1,4 +1,4 @@
-name: Release CI
+name: Release Build CI
 
 on:
   push:
@@ -13,23 +13,24 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [windows-latest, ubuntu-22.04, macos-15-intel, macos-latest]
+        os: [windows-latest, ubuntu-22.04, macos-latest]
         include:
           - os: windows-latest
             build: BTR-Windows.exe
           - os: ubuntu-22.04
             build: BTR-Linux
-          - os: macos-15-intel
-            build: BTR-macOS-Intel.bin
           - os: macos-latest
             build: BTR-macOS-Apple_Silicon.bin
     runs-on: ${{ matrix.os }}
     env:
       version: ${{ github.ref_name }}
     steps:
-      - name: Checkout
-        run: |
-          git clone https://x-access-token:${{ secrets.TOKEN }}@github.com/biliticket/bili_ticket_rush_tauri.git btr
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.REPO }}
+          token: ${{ secrets.TOKEN }}
+          path: btr
 
       - name: Install dependencies (Ubuntu)
         if: matrix.os == 'ubuntu-22.04'

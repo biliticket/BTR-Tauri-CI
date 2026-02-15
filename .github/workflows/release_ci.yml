@@ -1,0 +1,90 @@
+name: Release CI
+
+on:
+  push:
+    tags:
+      - "*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-22.04, macos-15-intel, macos-latest]
+        include:
+          - os: windows-latest
+            build: BTR-Windows.exe
+          - os: ubuntu-22.04
+            build: BTR-Linux
+          - os: macos-15-intel
+            build: BTR-macOS-Intel.bin
+          - os: macos-latest
+            build: BTR-macOS-Apple_Silicon.bin
+    runs-on: ${{ matrix.os }}
+    env:
+      version: ${{ github.ref_name }}
+    steps:
+      - name: Checkout
+        run: |
+          git clone https://${{ secrets.TOKEN }}@github.com/biliticket/bili_ticket_rush_tauri.git btr
+
+      - name: Install dependencies (Ubuntu)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev pkg-config
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: btr
+
+      - name: Build
+        run: cargo build --release
+        working-directory: ./btr
+
+      - name: Install UPX (Windows)
+        if: matrix.os == 'windows-latest'
+        run: choco install upx
+      - name: Install UPX (Ubuntu)
+        if: matrix.os == 'ubuntu-22.04'
+        run: sudo apt-get install -y upx-ucl
+      - name: Install UPX (macOS)
+        if: startsWith(matrix.os, 'macos-')
+        run: brew install upx
+
+      - name: Compress with UPX (Windows)
+        if: matrix.os == 'windows-latest'
+        run: upx --best --lzma btr/target/release/frontend.exe
+      - name: Compress with UPX (Linux/macOS)
+        if: matrix.os != 'windows-latest'
+        run: upx --best --lzma btr/target/release/frontend
+
+      - name: Prepare Output
+        shell: bash
+        run: |
+          mkdir -p btr/build
+          if [ "${{ matrix.os }}" == "windows-latest" ]; then
+            cp btr/target/release/frontend.exe btr/build/${{ github.ref_name }}-${{ matrix.build }}
+          else
+            cp btr/target/release/frontend btr/build/${{ github.ref_name }}-${{ matrix.build }}
+            chmod +x btr/build/${{ github.ref_name }}-${{ matrix.build }}
+          fi
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-${{ matrix.build }}
+          path: btr/build/${{ github.ref_name }}-${{ matrix.build }}
+
+      - name: Upload Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: btr/build/${{ github.ref_name }}-${{ matrix.build }}
